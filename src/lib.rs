@@ -81,7 +81,7 @@ impl Request {
 }
 
 pub struct IpfsApi {
-    pub config: Config,
+    config: Config,
     core: reactor::Core,
     client: hyper::Client<hyper::client::HttpConnector>,
 }
@@ -102,6 +102,10 @@ impl IpfsApi {
         }
     }
 
+    pub fn new_request(&self, command: String, args: Vec<String>) -> Request {
+        Request::new(&self.config, command, args)
+    }
+
     pub fn send_request(&mut self, request: &Request) {
         let uri = request.getUri();
         let hyper_req = hyper::Request::new(hyper::Method::Post, uri);
@@ -116,7 +120,29 @@ impl IpfsApi {
         println!("response: {}", str::from_utf8(&requested).unwrap());
     }
 
-    fn version(&self) {
+    pub fn request<T: ToString>(&mut self, command: T, args: Vec<String>) {
+        let req = self.new_request(command.to_string(), args);
+        self.send_request(&req)
+    }
+
+    pub fn commands(&mut self) {
+        self.request("commands", vec![]);
+    }
+
+    pub fn config_show(&mut self) {
+        self.request("config/show", vec![]);
+    }
+
+    pub fn config_get<T: ToString>(&mut self, key: T) {
+        self.request("config", vec![key.to_string()])
+    }
+
+    pub fn id(&mut self) {
+        self.request("id", vec![])
+    }
+
+    pub fn version(&mut self) {
+        self.request("version", vec![])
     }
 }
 
