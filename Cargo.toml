@@ -1,0 +1,17 @@
+[package]
+name = "ipfs-api"
+version = "0.0.0"
+license = "0BSD"
+authors = ["leavehouse <heavelouse@gmail.com>"]
+
+[lib]
+
+[[bin]]
+name = "test-stuff"
+path = "src/test_stuff.rs"
+
+[dependencies]
+futures = "0.1"
+hyper = "0.11"
+multiaddr = "0.2"
+tokio-core = "0.1"
