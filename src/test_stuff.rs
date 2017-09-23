@@ -1,6 +1,7 @@
 extern crate ipfs_api;
 
 use ipfs_api::IpfsApi;
+use std::io::{self, Write};
 
 fn main() {
     let mut ipfs = IpfsApi::default();
@@ -21,7 +22,11 @@ fn main() {
     println!("version result: {:?}", res);
     */
     let readme_path = "/ipfs/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG/readme";
-    let res = ipfs.cat(readme_path);
-    println!("catting the readme: {:?}", res);
-
+    let res = match ipfs.cat(readme_path) {
+        Err(e) => panic!("Could not cat readme: {:?}", e),
+        Ok(res) => {
+            println!("catting the readme");
+            io::stdout().write(&res[..])
+        }
+    };
 }

@@ -179,8 +179,8 @@ impl IpfsApi {
         self.request_string_result("block/get", vec![cid])
     }
 
-    pub fn cat<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
-        self.request_string_result("cat", vec![cid])
+    pub fn cat<T: ToString>(&mut self, cid: T) -> RequestResult<hyper::Chunk> {
+        self.request("cat", vec![cid])
     }
 
     pub fn commands(&mut self) -> RequestResult<CommandInfo> {
