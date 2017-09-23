@@ -127,6 +127,8 @@ fn chunk_to_string(ch: &hyper::Chunk) -> String {
     str::from_utf8(ch).unwrap().to_string()
 }
 
+// TODO: the request methods should be on an HttpApi Trait or something. and
+// it should adhere to https://github.com/ipfs/interface-ipfs-core#api
 impl IpfsApi {
     pub fn default() -> IpfsApi {
         Self::new(Config::default())
