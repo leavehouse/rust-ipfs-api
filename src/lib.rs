@@ -39,6 +39,7 @@ fn is_thin_waist(m: &Multiaddr) -> bool {
     is_ip(p1) && (p2 == Protocol::TCP || p2 == Protocol::UDP || is_ip(p2))
 }
 
+// TODO: args could be an Iterator?
 pub struct Request {
     api_base: String,
     command: String,
@@ -158,39 +159,50 @@ impl IpfsApi {
         Ok(self.core.run(post)?)
     }
 
-    pub fn request<T: ToString>(&mut self, command: T, args: Vec<String>)
-                                -> RequestResult<hyper::Chunk> {
-        let req = self.new_request(command.to_string(), args);
+    fn request_string_result<T, U>(&mut self, command: T, args: Vec<U>) -> RequestResult<String>
+                                   where T: ToString,
+                                         U: ToString {
+        self.request(command, args)
+            .map(|chunk| str::from_utf8(&chunk).unwrap().to_string())
+    }
+
+
+    pub fn request<T,U>(&mut self, command: T, args: Vec<U>) -> RequestResult<hyper::Chunk>
+                        where T: ToString, U: ToString {
+        let req = self.new_request(command.to_string(),
+                                   args.into_iter().map(|a| a.to_string()).collect());
         self.send_request(&req)
     }
 
+    // TODO: is this working? might need to specify encoding
     pub fn block_get<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
-        self.request("block/get", vec![cid.to_string()])
-            .map(|res| chunk_to_string(&res))
+        self.request_string_result("block/get", vec![cid])
+    }
+
+    pub fn cat<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
+        self.request_string_result("cat", vec![cid])
     }
 
     pub fn commands(&mut self) -> RequestResult<CommandInfo> {
-        let res = self.request("commands", vec![])?;
+        let res = self.request::<_, String>("commands", vec![])?;
         Ok(serde_json::from_slice(&res)?)
     }
 
     pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
-        self.request("config", vec![key.to_string()])
-            .map(|res| chunk_to_string(&res))
+        self.request_string_result("config", vec![key])
     }
 
     pub fn config_show(&mut self) -> RequestResult<String> {
-        self.request("config/show", vec![])
-            .map(|res| chunk_to_string(&res))
+        self.request_string_result::<_, String>("config/show", vec![])
     }
 
     pub fn id(&mut self) -> RequestResult<IdInfo> {
-        let res = self.request("id", vec![])?;
+        let res = self.request::<_, String>("id", vec![])?;
         Ok(serde_json::from_slice(&res)?)
     }
 
     pub fn version(&mut self) -> RequestResult<VersionInfo> {
-        let res = self.request("version", vec![])?;
+        let res = self.request::<_, String>("version", vec![])?;
         Ok(serde_json::from_slice(&res)?)
     }
 }

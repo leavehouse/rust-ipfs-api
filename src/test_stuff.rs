@@ -17,4 +17,8 @@ fn main() {
     let res = ipfs.version();
     println!("version result: {:?}", res);
     */
+    let readme_path = "/ipfs/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG/readme";
+    let res = ipfs.cat(readme_path);
+    println!("catting the readme: {:?}", res);
+
 }
