@@ -1,7 +1,11 @@
 extern crate futures;
 extern crate hyper;
 extern crate multiaddr;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+extern crate serde_json;
 extern crate tokio_core;
+
 
 use futures::{Future, Stream};
 use multiaddr::{Multiaddr, Protocol};
@@ -86,7 +90,8 @@ pub struct IpfsApi {
     client: hyper::Client<hyper::client::HttpConnector>,
 }
 
-struct VersionInfo {
+#[derive(Debug, Deserialize)]
+pub struct VersionInfo {
     Version: String,
     Commit: String,
     Repo: String,
@@ -94,7 +99,8 @@ struct VersionInfo {
     Golang: String,
 }
 
-struct IdInfo {
+#[derive(Debug, Deserialize)]
+pub struct IdInfo {
     ID: String,
     PublicKey: String,
     Addresses: Vec<String>,
@@ -102,17 +108,23 @@ struct IdInfo {
     ProtocolVersion: String,
 }
 
-struct CommandInfo {
+#[derive(Debug, Deserialize)]
+pub struct CommandInfo {
     Name: String,
     Subcommands: Vec<CommandInfo>,
     Options: Vec<CommandNames>,
 }
 
-struct CommandNames {
+#[derive(Debug, Deserialize)]
+pub struct CommandNames {
     Names: Vec<String>
 }
 
 pub type RequestResult<T> = Result<T, RequestError>;
+
+fn chunk_to_string(ch: &hyper::Chunk) -> String {
+    str::from_utf8(ch).unwrap().to_string()
+}
 
 impl IpfsApi {
     pub fn default() -> IpfsApi {
@@ -133,7 +145,7 @@ impl IpfsApi {
         Request::new(&self.config, command, args)
     }
 
-    pub fn send_request(&mut self, request: &Request) {
+    pub fn send_request(&mut self, request: &Request) -> RequestResult<hyper::Chunk> {
         let uri = request.getUri();
         let hyper_req = hyper::Request::new(hyper::Method::Post, uri);
         //req.headers_mut().set(ContentType::json());
@@ -143,44 +155,51 @@ impl IpfsApi {
             res.body().concat2()
         });
 
-        let requested = self.core.run(post).unwrap();
-        println!("response: {}", str::from_utf8(&requested).unwrap());
+        Ok(self.core.run(post)?)
     }
 
-    pub fn request<T: ToString>(&mut self, command: T, args: Vec<String>) {
+    pub fn request<T: ToString>(&mut self, command: T, args: Vec<String>)
+                                -> RequestResult<hyper::Chunk> {
         let req = self.new_request(command.to_string(), args);
         self.send_request(&req)
     }
 
-    pub fn block_get(&mut self, ) -> RequestResult<String> {
-        self.request("block/get", vec![]);
+    pub fn block_get<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
+        self.request("block/get", vec![cid.to_string()])
+            .map(|res| chunk_to_string(&res))
     }
 
     pub fn commands(&mut self) -> RequestResult<CommandInfo> {
-        self.request("commands", vec![]);
+        let res = self.request("commands", vec![])?;
+        Ok(serde_json::from_slice(&res)?)
     }
 
     pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
         self.request("config", vec![key.to_string()])
+            .map(|res| chunk_to_string(&res))
     }
 
     pub fn config_show(&mut self) -> RequestResult<String> {
         self.request("config/show", vec![])
+            .map(|res| chunk_to_string(&res))
     }
 
     pub fn id(&mut self) -> RequestResult<IdInfo> {
-        self.request("id", vec![])
+        let res = self.request("id", vec![])?;
+        Ok(serde_json::from_slice(&res)?)
     }
 
     pub fn version(&mut self) -> RequestResult<VersionInfo> {
-        self.request("version", vec![])
+        let res = self.request("version", vec![])?;
+        Ok(serde_json::from_slice(&res)?)
     }
-    */
 }
 
+#[derive(Debug)]
 pub enum RequestError {
     HyperError(hyper::Error),
     IoError(io::Error),
+    JsonError(serde_json::Error),
 }
 
 impl From<hyper::Error> for RequestError {
@@ -192,6 +211,12 @@ impl From<hyper::Error> for RequestError {
 impl From<io::Error> for RequestError {
     fn from(e: io::Error) -> RequestError {
         RequestError::IoError(e)
+    }
+}
+
+impl From<serde_json::Error> for RequestError {
+    fn from(e: serde_json::Error) -> RequestError {
+        RequestError::JsonError(e)
     }
 }
 
