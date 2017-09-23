@@ -5,7 +5,7 @@ A Rust interface to the [ipfs HTTP API](https://ipfs.io/docs/api/).
 # Usage
 This is very much a WIP, but currently can be used like so:
 
-```
+```rust
 extern crate ipfs_api;
 
 use ipfs_api::IpfsApi;
