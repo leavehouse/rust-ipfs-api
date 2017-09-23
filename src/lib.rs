@@ -6,7 +6,7 @@ extern crate tokio_core;
 use futures::{Future, Stream};
 use multiaddr::{Multiaddr, Protocol};
 use tokio_core::reactor;
-use std::str;
+use std::{io, str};
 
 fn is_ip(p:Protocol) -> bool {
     match p {
@@ -33,23 +33,6 @@ fn is_thin_waist(m: &Multiaddr) -> bool {
     }
     let p2 = protocol[1];
     is_ip(p1) && (p2 == Protocol::TCP || p2 == Protocol::UDP || is_ip(p2))
-}
-
-pub struct Config {
-    // no trailing slash. should enforce in constructor?
-    api_path: String,
-    host: String,
-    port: u16
-}
-
-impl Config {
-    fn default() -> Config {
-        Config {
-            api_path: String::from("/api/v0"),
-            host: String::from("localhost"),
-            port: 5001
-        }
-    }
 }
 
 pub struct Request {
@@ -80,12 +63,56 @@ impl Request {
 
 }
 
+pub struct Config {
+    // no trailing slash. should enforce in constructor?
+    api_path: String,
+    host: String,
+    port: u16
+}
+
+impl Config {
+    fn default() -> Config {
+        Config {
+            api_path: String::from("/api/v0"),
+            host: String::from("localhost"),
+            port: 5001
+        }
+    }
+}
+
 pub struct IpfsApi {
     config: Config,
     core: reactor::Core,
     client: hyper::Client<hyper::client::HttpConnector>,
 }
 
+struct VersionInfo {
+    Version: String,
+    Commit: String,
+    Repo: String,
+    System: String,
+    Golang: String,
+}
+
+struct IdInfo {
+    ID: String,
+    PublicKey: String,
+    Addresses: Vec<String>,
+    AgentVersion: String,
+    ProtocolVersion: String,
+}
+
+struct CommandInfo {
+    Name: String,
+    Subcommands: Vec<CommandInfo>,
+    Options: Vec<CommandNames>,
+}
+
+struct CommandNames {
+    Names: Vec<String>
+}
+
+pub type RequestResult<T> = Result<T, RequestError>;
 
 impl IpfsApi {
     pub fn default() -> IpfsApi {
@@ -125,24 +152,46 @@ impl IpfsApi {
         self.send_request(&req)
     }
 
-    pub fn commands(&mut self) {
+    pub fn block_get(&mut self, ) -> RequestResult<String> {
+        self.request("block/get", vec![]);
+    }
+
+    pub fn commands(&mut self) -> RequestResult<CommandInfo> {
         self.request("commands", vec![]);
     }
 
-    pub fn config_show(&mut self) {
-        self.request("config/show", vec![]);
-    }
-
-    pub fn config_get<T: ToString>(&mut self, key: T) {
+    pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
         self.request("config", vec![key.to_string()])
     }
 
-    pub fn id(&mut self) {
+    pub fn config_show(&mut self) -> RequestResult<String> {
+        self.request("config/show", vec![])
+    }
+
+    pub fn id(&mut self) -> RequestResult<IdInfo> {
         self.request("id", vec![])
     }
 
-    pub fn version(&mut self) {
+    pub fn version(&mut self) -> RequestResult<VersionInfo> {
         self.request("version", vec![])
+    }
+    */
+}
+
+pub enum RequestError {
+    HyperError(hyper::Error),
+    IoError(io::Error),
+}
+
+impl From<hyper::Error> for RequestError {
+    fn from(e: hyper::Error) -> RequestError {
+        RequestError::HyperError(e)
+    }
+}
+
+impl From<io::Error> for RequestError {
+    fn from(e: io::Error) -> RequestError {
+        RequestError::IoError(e)
     }
 }
 
