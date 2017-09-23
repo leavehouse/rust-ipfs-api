@@ -1,6 +1,6 @@
 extern crate ipfs_api;
 
-use ipfs_api::{IpfsApi, Request};
+use ipfs_api::IpfsApi;
 
 fn main() {
     let mut ipfs = IpfsApi::default();
@@ -10,10 +10,13 @@ fn main() {
     /*
     let res = ipfs.config_get("Addresses");
     println!("config_get result: {:?}", res);
-    //let res = ipfs.config_show();
-    //println!("config_show result: {:?}", res);
+
+    let res = ipfs.config_show();
+    println!("config_show result: {:?}", res);
+
     let res = ipfs.id();
     println!("id result: {:?}", res);
+
     let res = ipfs.version();
     println!("version result: {:?}", res);
     */
