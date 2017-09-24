@@ -5,8 +5,13 @@ use std::path::Path;
 
 fn main() {
     let mut ipfs = IpfsApi::default();
-    let info = ipfs.add(Path::new("wireshark_capture/moloch.txt"))
+    let add_info = ipfs.add(&[Path::new("wireshark_capture/moloch.txt"),
+                              Path::new("Cargo.toml")])
                    .expect("Error adding");
-    ipfs.cat(info.Hash).expect("Error catting");
+
+    for info in add_info {
+        ipfs.cat(&info.Hash).expect("Error catting");
+    }
+
     ipfs.version().expect("Error getting version");
 }

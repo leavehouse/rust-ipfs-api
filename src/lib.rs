@@ -12,7 +12,9 @@ use futures::{Future, Stream};
 use multiaddr::{Multiaddr, Protocol};
 use multipart_legacy_client::send_new_post_request;
 use tokio_core::reactor;
-use std::{io, path, str};
+use std::str;
+use std::io::{self, BufRead, BufReader};
+use std::path::Path;
 
 fn is_ip(p:Protocol) -> bool {
     match p {
@@ -42,18 +44,27 @@ fn is_thin_waist(m: &Multiaddr) -> bool {
 }
 
 // TODO: args could be an Iterator?
-// TODO: command could be T where T: AsRef<str> to avoid allocation?
-pub struct Request {
+// TODO: command could be some U where U: AsRef<str> to avoid allocation?
+pub struct Request<T> {
     api_base: String,
     command: String,
     args: Vec<String>,
+    other_data: T,
 }
 
-impl Request {
-    pub fn new(cfg: &Config, command: String, args: Vec<String>) -> Request {
+impl Request<()> {
+    pub fn new(cfg: &Config, command: String, args: Vec<String>) -> Request<()> {
+        Request::new_with_data(cfg, command, args, ())
+    }
+}
+
+impl<T> Request<T> {
+    pub fn new_with_data(cfg: &Config, command: String, args: Vec<String>,
+                         other_data: T)
+            -> Request<T> {
         let api_base = format!("http://{}:{}{}", cfg.host, cfg.port,
                                cfg.api_path);
-        Request { api_base, command, args }
+        Request { api_base, command, args, other_data }
     }
 
     pub fn make_uri_string(&self) -> String {
@@ -96,12 +107,6 @@ impl Config {
     }
 }
 
-pub struct IpfsApi {
-    config: Config,
-    core: reactor::Core,
-    client: hyper::Client<hyper::client::HttpConnector>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct AddInfo {
     pub Name: String,
@@ -141,8 +146,11 @@ pub struct CommandNames {
 
 pub type RequestResult<T> = Result<T, RequestError>;
 
-fn chunk_to_string(ch: &hyper::Chunk) -> String {
-    str::from_utf8(ch).unwrap().to_string()
+
+pub struct IpfsApi {
+    config: Config,
+    core: reactor::Core,
+    client: hyper::Client<hyper::client::HttpConnector>,
 }
 
 impl IpfsApi {
@@ -160,11 +168,17 @@ impl IpfsApi {
         }
     }
 
-    pub fn new_request(&self, command: String, args: Vec<String>) -> Request {
+    pub fn new_request(&self, command: String, args: Vec<String>) -> Request<()> {
         Request::new(&self.config, command, args)
     }
 
-    pub fn send_request(&mut self, request: &Request)
+    pub fn new_multipart_request<'a>(&self, command: String, args: Vec<String>,
+                                     files: Vec<&'a Path>)
+            -> Request<Vec<&'a Path>> {
+        Request::new_with_data(&self.config, command, args, files)
+    }
+
+    pub fn send_request(&mut self, request: &Request<()>)
                         -> RequestResult<hyper::Chunk> {
         let hyper_req: hyper::Request = request.new_hyper_request(hyper::Method::Post);
         //req.headers_mut().set(ContentType::json());
@@ -178,13 +192,10 @@ impl IpfsApi {
     }
 
     // multipart-async doesnt seem to be ready, so this is synchronous for now
-    pub fn send_request_multipart(&mut self, request: &Request)
+    pub fn send_request_multipart(&mut self, request: &Request<Vec<&Path>>)
                                   -> RequestResult<Vec<u8>> {
         let url = request.make_uri_string();
-        if request.args.len() != 1 {
-            unimplemented!()
-        }
-        Ok(send_new_post_request(url, path::Path::new(&request.args[0]))?)
+        Ok(send_new_post_request(url, &request.other_data[..])?)
     }
 
     fn request_string_result<T, U>(&mut self, command: T, args: Vec<U>)
@@ -197,30 +208,35 @@ impl IpfsApi {
 
 
     pub fn request<T,U>(&mut self, command: T, args: Vec<U>)
-                        -> RequestResult<hyper::Chunk>
-                        where T: ToString, U: ToString {
+            -> RequestResult<hyper::Chunk> where T: ToString, U: ToString {
         let req = self.new_request(command.to_string(),
-                                   args.into_iter().map(|a| a.to_string()).collect());
+                                   args.into_iter()
+                                       .map(|a| a.to_string())
+                                       .collect());
         self.send_request(&req)
     }
 
-    pub fn request_multipart<T,U>(&mut self, command: T, args: Vec<U>)
-                                  -> RequestResult<Vec<u8>>
-                                  where T: ToString, U: ToString {
-        let req = self.new_request(command.to_string(),
-                                   args.into_iter().map(|a| a.to_string()).collect());
+    pub fn request_multipart<T>(&mut self, command: T, files: Vec<&Path>)
+            -> RequestResult<Vec<u8>> where T: ToString {
+        let req = self.new_multipart_request(command.to_string(),
+                                             vec![] as Vec<String>, files);
         self.send_request_multipart(&req)
     }
 
     /*** start of API calls ***/
-    // TODO: these should be on an HttpApi Trait, which would act as an impl of
+    // TODO: these should be on an HttpApi Trait, which would conform with
     // https://github.com/ipfs/interface-ipfs-core#api
 
     // TODO: options
-    pub fn add(&mut self, file_path: &path::Path) -> RequestResult<AddInfo> {
-        let file_path_str = file_path.to_str().expect("The path is not valid utf-8");
-        let res = self.request_multipart("add", vec![file_path_str.to_string()])?;
-        Ok(serde_json::from_slice(&res)?)
+    pub fn add(&mut self, paths: &[&Path]) -> RequestResult<Vec<AddInfo>> {
+        let res = self.request_multipart("add", paths.to_vec())?;
+        let reader = BufReader::new(&res[..]);
+        let mut infos = vec![];
+        for info in reader.split(b'\n') {
+            let add_info = serde_json::from_slice(&(info?)[..]);
+            infos.push(add_info?);
+        }
+        Ok(infos)
     }
 
     // TODO: is this working? might need to specify encoding
@@ -293,6 +309,12 @@ impl From<multipart_legacy_client::RequestError> for RequestError {
                 RequestError::from(e),
             _ => RequestError::Other(format!("Error: {:?}", e)),
         }
+    }
+}
+
+impl From<str::Utf8Error> for RequestError {
+    fn from(e: str::Utf8Error) -> RequestError {
+        RequestError::Other(format!("{:?}", e))
     }
 }
 
