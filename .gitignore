@@ -1,3 +1,4 @@
 /target/
 **/*.rs.bk
 Cargo.lock
+/wireshark_capture/wireshark-*

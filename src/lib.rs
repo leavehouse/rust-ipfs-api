@@ -1,6 +1,7 @@
 extern crate futures;
 extern crate hyper;
 extern crate multiaddr;
+extern crate multipart_legacy_client;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate serde_json;
@@ -9,8 +10,9 @@ extern crate tokio_core;
 
 use futures::{Future, Stream};
 use multiaddr::{Multiaddr, Protocol};
+use multipart_legacy_client::send_new_post_request;
 use tokio_core::reactor;
-use std::{io, str};
+use std::{io, path, str};
 
 fn is_ip(p:Protocol) -> bool {
     match p {
@@ -40,6 +42,7 @@ fn is_thin_waist(m: &Multiaddr) -> bool {
 }
 
 // TODO: args could be an Iterator?
+// TODO: command could be T where T: AsRef<str> to avoid allocation?
 pub struct Request {
     api_base: String,
     command: String,
@@ -53,17 +56,25 @@ impl Request {
         Request { api_base, command, args }
     }
 
-    // TODO: options
-    pub fn getUri(&self) -> hyper::Uri {
+    pub fn make_uri_string(&self) -> String {
         let args_str = self.args.iter()
                                 .map(|ref arg| format!("arg={}", arg))
                                 .collect::<Vec<_>>()
                                 .join("&");
-        let uri_string = format!("{}/{}?{}", self.api_base, self.command, args_str);
+        format!("{}/{}?{}", self.api_base, self.command, args_str)
+    }
+
+    // TODO: options
+    pub fn get_uri(&self) -> hyper::Uri {
+        let uri_string = self.make_uri_string();
         match uri_string.parse() {
             Err(err) => panic!("Parse of {} failed: {}", uri_string, err),
             Ok(uri) => uri,
         }
+    }
+
+    pub fn new_hyper_request(&self, method: hyper::Method) -> hyper::Request {
+        hyper::Request::new(method, self.get_uri())
     }
 
 }
@@ -89,6 +100,13 @@ pub struct IpfsApi {
     config: Config,
     core: reactor::Core,
     client: hyper::Client<hyper::client::HttpConnector>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddInfo {
+    pub Name: String,
+    pub Hash: String,
+    pub Size: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,8 +145,6 @@ fn chunk_to_string(ch: &hyper::Chunk) -> String {
     str::from_utf8(ch).unwrap().to_string()
 }
 
-// TODO: the request methods should be on an HttpApi Trait or something. and
-// it should adhere to https://github.com/ipfs/interface-ipfs-core#api
 impl IpfsApi {
     pub fn default() -> IpfsApi {
         Self::new(Config::default())
@@ -148,9 +164,9 @@ impl IpfsApi {
         Request::new(&self.config, command, args)
     }
 
-    pub fn send_request(&mut self, request: &Request) -> RequestResult<hyper::Chunk> {
-        let uri = request.getUri();
-        let hyper_req = hyper::Request::new(hyper::Method::Post, uri);
+    pub fn send_request(&mut self, request: &Request)
+                        -> RequestResult<hyper::Chunk> {
+        let hyper_req: hyper::Request = request.new_hyper_request(hyper::Method::Post);
         //req.headers_mut().set(ContentType::json());
         //req.headers_mut().set(ContentLength(json.len() as u64));
         //hyper_req.set_body(request);
@@ -161,7 +177,18 @@ impl IpfsApi {
         Ok(self.core.run(post)?)
     }
 
-    fn request_string_result<T, U>(&mut self, command: T, args: Vec<U>) -> RequestResult<String>
+    // multipart-async doesnt seem to be ready, so this is synchronous for now
+    pub fn send_request_multipart(&mut self, request: &Request)
+                                  -> RequestResult<Vec<u8>> {
+        let url = request.make_uri_string();
+        if request.args.len() != 1 {
+            unimplemented!()
+        }
+        Ok(send_new_post_request(url, path::Path::new(&request.args[0]))?)
+    }
+
+    fn request_string_result<T, U>(&mut self, command: T, args: Vec<U>)
+                                   -> RequestResult<String>
                                    where T: ToString,
                                          U: ToString {
         self.request(command, args)
@@ -169,11 +196,31 @@ impl IpfsApi {
     }
 
 
-    pub fn request<T,U>(&mut self, command: T, args: Vec<U>) -> RequestResult<hyper::Chunk>
+    pub fn request<T,U>(&mut self, command: T, args: Vec<U>)
+                        -> RequestResult<hyper::Chunk>
                         where T: ToString, U: ToString {
         let req = self.new_request(command.to_string(),
                                    args.into_iter().map(|a| a.to_string()).collect());
         self.send_request(&req)
+    }
+
+    pub fn request_multipart<T,U>(&mut self, command: T, args: Vec<U>)
+                                  -> RequestResult<Vec<u8>>
+                                  where T: ToString, U: ToString {
+        let req = self.new_request(command.to_string(),
+                                   args.into_iter().map(|a| a.to_string()).collect());
+        self.send_request_multipart(&req)
+    }
+
+    /*** start of API calls ***/
+    // TODO: these should be on an HttpApi Trait, which would act as an impl of
+    // https://github.com/ipfs/interface-ipfs-core#api
+
+    // TODO: options
+    pub fn add(&mut self, file_path: &path::Path) -> RequestResult<AddInfo> {
+        let file_path_str = file_path.to_str().expect("The path is not valid utf-8");
+        let res = self.request_multipart("add", vec![file_path_str.to_string()])?;
+        Ok(serde_json::from_slice(&res)?)
     }
 
     // TODO: is this working? might need to specify encoding
@@ -214,6 +261,7 @@ pub enum RequestError {
     HyperError(hyper::Error),
     IoError(io::Error),
     JsonError(serde_json::Error),
+    Other(String),
 }
 
 impl From<hyper::Error> for RequestError {
@@ -234,6 +282,19 @@ impl From<serde_json::Error> for RequestError {
     }
 }
 
+impl From<multipart_legacy_client::RequestError> for RequestError {
+    fn from(e: multipart_legacy_client::RequestError) -> RequestError {
+        match e {
+            multipart_legacy_client::RequestError::ParseError(e) =>
+                RequestError::Other(format!("Parse error: {}", e)),
+            multipart_legacy_client::RequestError::HyperError(e) =>
+                RequestError::Other(format!("Hyper error: {}", e)),
+            multipart_legacy_client::RequestError::IoError(e) =>
+                RequestError::from(e),
+            _ => RequestError::Other(format!("Error: {:?}", e)),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
