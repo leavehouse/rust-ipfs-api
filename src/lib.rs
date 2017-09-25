@@ -116,10 +116,10 @@ pub struct AddInfo {
 
 #[derive(Debug, Deserialize)]
 pub struct VersionInfo {
-    Version: String,
+    pub Version: String,
     Commit: String,
-    Repo: String,
-    System: String,
+    pub Repo: String,
+    pub System: String,
     Golang: String,
 }
 
