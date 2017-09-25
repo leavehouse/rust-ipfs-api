@@ -32,7 +32,7 @@ fn main() {
     println!("~~~~~~~~~~~~~~~~~~~~~");
 
     let path = std::path::Path::new("lorem_ipsum.txt");
-    match ipfs.add(path) {
+    match ipfs.add(&[path]) {
         Err(e) => panic!("ipfs add failed: {:?}", e),
         Ok(res) => {
             println!("added {:?}", path);

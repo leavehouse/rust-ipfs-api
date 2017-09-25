@@ -7,41 +7,16 @@ extern crate serde;
 extern crate serde_json;
 extern crate tokio_core;
 
+mod unmarshal;
+mod util;
 
 use futures::{Future, Stream};
-use multiaddr::{Multiaddr, Protocol};
 use multipart_legacy_client::send_new_post_request;
 use tokio_core::reactor;
 use std::str;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
-
-fn is_ip(p:Protocol) -> bool {
-    match p {
-        Protocol::IP4 | Protocol::IP6 => true,
-        _ => false,
-    }
-}
-
-// Comment from go-multiaddr-net:
-//
-// "IsThinWaist returns whether a Multiaddr starts with "Thin Waist" Protocols.
-// This means: /{IP4, IP6}[/{TCP, UDP}]"
-fn is_thin_waist(m: &Multiaddr) -> bool {
-    let protocol = m.protocol();
-    if protocol.len() == 0 {
-        return false
-    }
-    let p1 = protocol[0];
-    if !is_ip(p1) {
-        return false
-    }
-    if protocol.len() == 1 {
-        return true
-    }
-    let p2 = protocol[1];
-    is_ip(p1) && (p2 == Protocol::TCP || p2 == Protocol::UDP || is_ip(p2))
-}
+use unmarshal::{AddInfo, CommandInfo, CommandNames, IdInfo, VersionInfo};
 
 // TODO: args could be an Iterator?
 // TODO: command could be some U where U: AsRef<str> to avoid allocation?
@@ -107,42 +82,6 @@ impl Config {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AddInfo {
-    pub Name: String,
-    pub Hash: String,
-    pub Size: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct VersionInfo {
-    pub Version: String,
-    Commit: String,
-    pub Repo: String,
-    pub System: String,
-    Golang: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct IdInfo {
-    ID: String,
-    PublicKey: String,
-    Addresses: Vec<String>,
-    AgentVersion: String,
-    ProtocolVersion: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CommandInfo {
-    Name: String,
-    Subcommands: Vec<CommandInfo>,
-    Options: Vec<CommandNames>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CommandNames {
-    Names: Vec<String>
-}
 
 pub type RequestResult<T> = Result<T, RequestError>;
 
@@ -315,31 +254,5 @@ impl From<multipart_legacy_client::RequestError> for RequestError {
 impl From<str::Utf8Error> for RequestError {
     fn from(e: str::Utf8Error) -> RequestError {
         RequestError::Other(format!("{:?}", e))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use multiaddr::{Multiaddr};
-
-    #[test]
-    fn thin_waist() {
-        let test_maddrs = vec![
-            "/ip4/127.0.0.1/udp/1234",
-            "/ip4/127.0.0.1/tcp/1234",
-            "/ip4/1.2.3.4",
-            "/ip4/0.0.0.0",
-            "/ip6/::1",
-            "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21",
-            "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21/udp/1234"
-        ];
-
-        for maddr_str in &test_maddrs {
-            let maddr = match Multiaddr::new(maddr_str) {
-                Err(e) => panic!("Error parsing multiaddr {}: {}", maddr_str, e),
-                Ok(maddr) => maddr,
-            };
-            assert!(super::is_thin_waist(&maddr));
-        }
     }
 }
