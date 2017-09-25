@@ -165,13 +165,14 @@ impl IpfsApi {
     // https://github.com/ipfs/interface-ipfs-core#api
 
     // TODO: options
-    pub fn add(&mut self, paths: &[&Path]) -> RequestResult<Vec<AddInfo>> {
+    pub fn add(&mut self, paths: &[&Path]) -> RequestResult<Vec<Vec<u8>>> {
         let res = self.request_multipart("add", paths.to_vec())?;
         let reader = BufReader::new(&res[..]);
         let mut infos = vec![];
+        // TODO: use something like reader.split(b'\n').map(|b| b?).collect()
+        // problem is using ? in the closure argument to map.
         for info in reader.split(b'\n') {
-            let add_info = serde_json::from_slice(&(info?)[..]);
-            infos.push(add_info?);
+            infos.push(info?);
         }
         Ok(infos)
     }
@@ -210,7 +211,6 @@ impl IpfsApi {
 pub enum RequestError {
     HyperError(hyper::Error),
     IoError(io::Error),
-    JsonError(serde_json::Error),
     Other(String),
 }
 
@@ -223,12 +223,6 @@ impl From<hyper::Error> for RequestError {
 impl From<io::Error> for RequestError {
     fn from(e: io::Error) -> RequestError {
         RequestError::IoError(e)
-    }
-}
-
-impl From<serde_json::Error> for RequestError {
-    fn from(e: serde_json::Error) -> RequestError {
-        RequestError::JsonError(e)
     }
 }
 

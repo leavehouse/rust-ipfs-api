@@ -1,6 +1,6 @@
 extern crate ipfs_api;
 
-use ipfs_api::{IpfsApi, unmarshal, CommandInfo, IdInfo, VersionInfo};
+use ipfs_api::{IpfsApi, unmarshal, AddInfo, CommandInfo, IdInfo, VersionInfo};
 use std::io::{self, Write};
 
 fn main() {
@@ -33,24 +33,16 @@ fn run_commands(ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
     println!("~~~~~~~~~~~~~~~~~~~~~");
 
     let readme_path = "/ipfs/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG/readme";
-    match ipfs.cat(readme_path) {
-        Err(e) => panic!("Could not cat readme: {:?}", e),
-        Ok(res) => {
-            println!("catting the readme");
-            io::stdout().write(&res[..]).unwrap();
-        }
-    }
+    let out_bytes = ipfs.cat(readme_path)?;
+    io::stdout().write(&out_bytes[..]).unwrap();
 
     println!("~~~~~~~~~~~~~~~~~~~~~");
 
     let path = std::path::Path::new("lorem_ipsum.txt");
-    match ipfs.add(&[path]) {
-        Err(e) => panic!("ipfs add failed: {:?}", e),
-        Ok(res) => {
-            println!("added {:?}", path);
-            println!("{:?}", res);
-        }
-    }
+    let chunk = ipfs.add(&[path])?;
+    let add_info: AddInfo = unmarshal(&chunk[0]).expect("could not unmarshal");
+    println!("added file {:?}", path);
+    println!("add info: {:?}", add_info);
 
     println!("~~~~~~~~~~~~~~~~~~~~~");
 

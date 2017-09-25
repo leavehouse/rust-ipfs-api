@@ -1,8 +1,8 @@
 use super::{hyper, serde, serde_json};
 
-pub fn unmarshal<'a, T>(chunk: &'a hyper::Chunk) -> serde_json::Result<T>
+pub fn unmarshal<'a, T>(bytes: &'a [u8]) -> serde_json::Result<T>
         where T: serde::Deserialize<'a> {
-    serde_json::from_slice(chunk)
+    serde_json::from_slice(bytes)
 }
 
 #[derive(Debug, Deserialize)]
