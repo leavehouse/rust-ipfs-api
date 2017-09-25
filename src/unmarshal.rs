@@ -1,3 +1,10 @@
+use super::{hyper, serde, serde_json};
+
+pub fn unmarshal<'a, T>(chunk: &'a hyper::Chunk) -> serde_json::Result<T>
+        where T: serde::Deserialize<'a> {
+    serde_json::from_slice(chunk)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddInfo {
     pub Name: String,

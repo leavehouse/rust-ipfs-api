@@ -16,7 +16,8 @@ use tokio_core::reactor;
 use std::str;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
-use unmarshal::{AddInfo, CommandInfo, CommandNames, IdInfo, VersionInfo};
+pub use unmarshal::{AddInfo, CommandInfo, CommandNames, IdInfo, VersionInfo};
+pub use unmarshal::unmarshal;
 
 // TODO: args could be an Iterator?
 // TODO: command could be some U where U: AsRef<str> to avoid allocation?
@@ -62,7 +63,6 @@ impl<T> Request<T> {
     pub fn new_hyper_request(&self, method: hyper::Method) -> hyper::Request {
         hyper::Request::new(method, self.get_uri())
     }
-
 }
 
 pub struct Config {
@@ -82,9 +82,7 @@ impl Config {
     }
 }
 
-
 pub type RequestResult<T> = Result<T, RequestError>;
-
 
 pub struct IpfsApi {
     config: Config,
@@ -187,9 +185,8 @@ impl IpfsApi {
         self.request("cat", vec![cid])
     }
 
-    pub fn commands(&mut self) -> RequestResult<CommandInfo> {
-        let res = self.request::<_, String>("commands", vec![])?;
-        Ok(serde_json::from_slice(&res)?)
+    pub fn commands(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request::<_, String>("commands", vec![])
     }
 
     pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
@@ -200,14 +197,12 @@ impl IpfsApi {
         self.request_string_result::<_, String>("config/show", vec![])
     }
 
-    pub fn id(&mut self) -> RequestResult<IdInfo> {
-        let res = self.request::<_, String>("id", vec![])?;
-        Ok(serde_json::from_slice(&res)?)
+    pub fn id(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request::<_, String>("id", vec![])
     }
 
-    pub fn version(&mut self) -> RequestResult<VersionInfo> {
-        let res = self.request::<_, String>("version", vec![])?;
-        Ok(serde_json::from_slice(&res)?)
+    pub fn version(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request::<_, String>("version", vec![])
     }
 }
 
