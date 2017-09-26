@@ -105,17 +105,17 @@ impl IpfsApi {
         }
     }
 
-    pub fn new_request(&self, command: String, args: Vec<String>) -> Request<()> {
+    fn new_request(&self, command: String, args: Vec<String>) -> Request<()> {
         Request::new(&self.config, command, args)
     }
 
-    pub fn new_multipart_request<'a>(&self, command: String, args: Vec<String>,
+    fn new_multipart_request<'a>(&self, command: String, args: Vec<String>,
                                      files: Vec<&'a Path>)
             -> Request<Vec<&'a Path>> {
         Request::new_with_data(&self.config, command, args, files)
     }
 
-    pub fn send_request(&mut self, request: &Request<()>)
+    fn send_request(&mut self, request: &Request<()>)
                         -> RequestResult<hyper::Chunk> {
         let hyper_req: hyper::Request = request.new_hyper_request(hyper::Method::Post);
         //req.headers_mut().set(ContentType::json());
@@ -129,7 +129,7 @@ impl IpfsApi {
     }
 
     // multipart-async doesnt seem to be ready, so this is synchronous for now
-    pub fn send_request_multipart(&mut self, request: &Request<Vec<&Path>>)
+    fn send_request_multipart(&mut self, request: &Request<Vec<&Path>>)
                                   -> RequestResult<Vec<u8>> {
         let url = request.make_uri_string();
         Ok(send_new_post_request(url, &request.other_data[..])?)
@@ -144,7 +144,7 @@ impl IpfsApi {
     }
 
 
-    pub fn request<T,U>(&mut self, command: T, args: Vec<U>)
+    fn request<T,U>(&mut self, command: T, args: Vec<U>)
             -> RequestResult<hyper::Chunk> where T: ToString, U: ToString {
         let req = self.new_request(command.to_string(),
                                    args.into_iter()
@@ -153,8 +153,18 @@ impl IpfsApi {
         self.send_request(&req)
     }
 
-    pub fn request_multipart<T>(&mut self, command: T, files: Vec<&Path>)
-            -> RequestResult<Vec<u8>> where T: ToString {
+    fn request_no_args<T>(
+        &mut self,
+        command: T
+    ) -> RequestResult<hyper::Chunk> where T: ToString {
+        self.request::<_, String>(command, vec![])
+    }
+
+    fn request_multipart<T>(
+        &mut self,
+        command: T,
+        files: Vec<&Path>
+    ) -> RequestResult<Vec<u8>> where T: ToString {
         let req = self.new_multipart_request(command.to_string(),
                                              vec![] as Vec<String>, files);
         self.send_request_multipart(&req)
@@ -177,9 +187,17 @@ impl IpfsApi {
         Ok(infos)
     }
 
+    pub fn bitswap_stat(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("bitswap/stat")
+    }
+
     // TODO: is this working? might need to specify encoding
     pub fn block_get<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
         self.request_string_result("block/get", vec![cid])
+    }
+
+    pub fn bootstrap_list(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("bootstrap/list")
     }
 
     pub fn cat<T: ToString>(&mut self, cid: T) -> RequestResult<hyper::Chunk> {
@@ -187,7 +205,7 @@ impl IpfsApi {
     }
 
     pub fn commands(&mut self) -> RequestResult<hyper::Chunk> {
-        self.request::<_, String>("commands", vec![])
+        self.request_no_args("commands")
     }
 
     pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
@@ -199,11 +217,32 @@ impl IpfsApi {
     }
 
     pub fn id(&mut self) -> RequestResult<hyper::Chunk> {
-        self.request::<_, String>("id", vec![])
+        self.request_no_args("id")
+    }
+
+    pub fn log_ls(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("log/ls")
+    }
+
+    // TODO: test that this keeps receiving chunks correctly?
+    pub fn log_tail(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("log/tail")
+    }
+
+    pub fn stats_bitswap(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("stats/bitswap")
+    }
+
+    pub fn swarm_addrs(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("swarm/addrs")
+    }
+
+    pub fn swarm_peers(&mut self) -> RequestResult<hyper::Chunk> {
+        self.request_no_args("swarm/peers")
     }
 
     pub fn version(&mut self) -> RequestResult<hyper::Chunk> {
-        self.request::<_, String>("version", vec![])
+        self.request_no_args("version")
     }
 }
 
