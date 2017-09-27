@@ -21,23 +21,23 @@ pub use unmarshal::unmarshal;
 
 // TODO: args could be an Iterator?
 // TODO: command could be some U where U: AsRef<str> to avoid allocation?
-pub struct Request<T> {
+pub struct Request<'a, D> {
     api_base: String,
-    command: String,
-    args: Vec<String>,
-    other_data: T,
+    command: &'a str,
+    args: Vec<&'a str>,
+    other_data: D,
 }
 
-impl Request<()> {
-    pub fn new(cfg: &Config, command: String, args: Vec<String>) -> Request<()> {
+impl<'a> Request<'a, ()> {
+    pub fn new<'b>(cfg: &'b Config, command: &'a str, args: Vec<&'a str>)
+                   -> Request<'a, ()> {
         Request::new_with_data(cfg, command, args, ())
     }
 }
 
-impl<T> Request<T> {
-    pub fn new_with_data(cfg: &Config, command: String, args: Vec<String>,
-                         other_data: T)
-            -> Request<T> {
+impl<'a, D> Request<'a, D> {
+    pub fn new_with_data<'b>(cfg: &'b Config, command: &'a str, args: Vec<&'a str>,
+                             other_data: D) -> Request<'a, D> {
         let api_base = format!("http://{}:{}{}", cfg.host, cfg.port,
                                cfg.api_path);
         Request { api_base, command, args, other_data }
@@ -105,13 +105,14 @@ impl IpfsApi {
         }
     }
 
-    fn new_request(&self, command: String, args: Vec<String>) -> Request<()> {
+    fn new_request<'a>(&self, command: &'a str, args: Vec<&'a str>)
+                       -> Request<'a, ()> {
         Request::new(&self.config, command, args)
     }
 
-    fn new_multipart_request<'a>(&self, command: String, args: Vec<String>,
-                                     files: Vec<&'a Path>)
-            -> Request<Vec<&'a Path>> {
+    fn new_multipart_request<'a, 'b>(&self, command: &'a str, args: Vec<&'a str>,
+                                     files: Vec<&'b Path>)
+            -> Request<'a, Vec<&'b Path>> {
         Request::new_with_data(&self.config, command, args, files)
     }
 
@@ -135,38 +136,26 @@ impl IpfsApi {
         Ok(send_new_post_request(url, &request.other_data[..])?)
     }
 
-    fn request_string_result<T, U>(&mut self, command: T, args: Vec<U>)
-                                   -> RequestResult<String>
-                                   where T: ToString,
-                                         U: ToString {
+    fn request_string_result(&mut self, command: &str, args: Vec<&str>)
+            -> RequestResult<String> {
         self.request(command, args)
             .map(|chunk| str::from_utf8(&chunk).unwrap().to_string())
     }
 
 
-    fn request<T,U>(&mut self, command: T, args: Vec<U>)
-            -> RequestResult<hyper::Chunk> where T: ToString, U: ToString {
-        let req = self.new_request(command.to_string(),
-                                   args.into_iter()
-                                       .map(|a| a.to_string())
-                                       .collect());
+    fn request(&mut self, command: &str, args: Vec<&str>)
+            -> RequestResult<hyper::Chunk> {
+        let req = self.new_request(command, args);
         self.send_request(&req)
     }
 
-    fn request_no_args<T>(
-        &mut self,
-        command: T
-    ) -> RequestResult<hyper::Chunk> where T: ToString {
-        self.request::<_, String>(command, vec![])
+    fn request_no_args(&mut self, command: &str) -> RequestResult<hyper::Chunk> {
+        self.request(command, vec![])
     }
 
-    fn request_multipart<T>(
-        &mut self,
-        command: T,
-        files: Vec<&Path>
-    ) -> RequestResult<Vec<u8>> where T: ToString {
-        let req = self.new_multipart_request(command.to_string(),
-                                             vec![] as Vec<String>, files);
+    fn request_multipart(&mut self, command: &str, files: Vec<&Path>)
+            -> RequestResult<Vec<u8>> {
+        let req = self.new_multipart_request(command, vec![], files);
         self.send_request_multipart(&req)
     }
 
@@ -192,28 +181,28 @@ impl IpfsApi {
     }
 
     // TODO: is this working? might need to specify encoding
-    pub fn block_get<T: ToString>(&mut self, cid: T) -> RequestResult<String> {
-        self.request_string_result("block/get", vec![cid])
+    pub fn block_get<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<String> {
+        self.request_string_result("block/get", vec![cid.as_ref()])
     }
 
     pub fn bootstrap_list(&mut self) -> RequestResult<hyper::Chunk> {
         self.request_no_args("bootstrap/list")
     }
 
-    pub fn cat<T: ToString>(&mut self, cid: T) -> RequestResult<hyper::Chunk> {
-        self.request("cat", vec![cid])
+    pub fn cat<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<hyper::Chunk> {
+        self.request("cat", vec![cid.as_ref()])
     }
 
     pub fn commands(&mut self) -> RequestResult<hyper::Chunk> {
         self.request_no_args("commands")
     }
 
-    pub fn config_get<T: ToString>(&mut self, key: T) -> RequestResult<String> {
-        self.request_string_result("config", vec![key])
+    pub fn config_get<S: AsRef<str>>(&mut self, key: S) -> RequestResult<String> {
+        self.request_string_result("config", vec![key.as_ref()])
     }
 
     pub fn config_show(&mut self) -> RequestResult<String> {
-        self.request_string_result::<_, String>("config/show", vec![])
+        self.request_string_result("config/show", vec![])
     }
 
     pub fn id(&mut self) -> RequestResult<hyper::Chunk> {
