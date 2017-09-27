@@ -10,13 +10,12 @@ extern crate tokio_core;
 mod unmarshal;
 mod util;
 
-use futures::{Future, Stream};
-use hyper::Chunk;
+use futures::{Future, IntoFuture, Stream};
 use multipart_legacy_client::send_new_post_request;
-use tokio_core::reactor;
 use std::str;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
+use tokio_core::reactor;
 pub use unmarshal::*;
 pub use unmarshal::unmarshal;
 
@@ -83,25 +82,22 @@ impl Config {
 }
 
 pub type RequestResult<T> = Result<T, RequestError>;
+pub type ChunkFuture = Box<Future<Item = hyper::Chunk, Error = hyper::Error>>;
 
 pub struct IpfsApi {
     config: Config,
-    core: reactor::Core,
     client: hyper::Client<hyper::client::HttpConnector>,
 }
 
 impl IpfsApi {
-    pub fn default() -> IpfsApi {
-        Self::new(Config::default())
+    pub fn default(core_handle: &reactor::Handle) -> IpfsApi {
+        Self::new(Config::default(), core_handle)
     }
 
-    pub fn new(cfg: Config) -> IpfsApi {
-        let core = reactor::Core::new().unwrap();
-        let client = hyper::Client::new(&core.handle());
+    pub fn new(cfg: Config, core_handle: &reactor::Handle) -> IpfsApi {
         IpfsApi {
             config: cfg,
-            core: core,
-            client: client,
+            client: hyper::Client::new(core_handle),
         }
     }
 
@@ -117,39 +113,40 @@ impl IpfsApi {
     }
 
     fn send_request(&mut self, request: &Request<()>)
-                        -> RequestResult<Chunk> {
+            -> ChunkFuture {
+
         let hyper_req: hyper::Request = request.new_hyper_request(hyper::Method::Post);
         //req.headers_mut().set(ContentType::json());
         //req.headers_mut().set(ContentLength(json.len() as u64));
         //hyper_req.set_body(request);
-        let post = self.client.request(hyper_req).and_then(|res| {
+        Box::new(self.client.request(hyper_req).and_then(|res| {
             res.body().concat2()
-        });
-
-        Ok(self.core.run(post)?)
+        }))
     }
 
     // multipart-async doesnt seem to be ready, so this is synchronous for now
     fn send_request_multipart(&mut self, request: &Request<Vec<&Path>>)
                                   -> RequestResult<Vec<u8>> {
         let url = request.make_uri_string();
-        Ok(send_new_post_request(url, &request.other_data[..])?)
+        let response_bytes = send_new_post_request(url, &request.other_data[..])?;
+        Ok(response_bytes)
     }
 
+    // TODO: dont unwrap, properly handle errors?
     fn request_string_result(&mut self, command: &str, args: Vec<&str>)
-            -> RequestResult<String> {
-        self.request(command, args)
-            .map(|chunk| str::from_utf8(&chunk).unwrap().to_string())
+            -> Box<Future<Item = String, Error = hyper::Error>> {
+        Box::new(self.request(command, args)
+                     .map(|chunk| str::from_utf8(&chunk).unwrap().to_string()))
     }
 
 
     fn request(&mut self, command: &str, args: Vec<&str>)
-            -> RequestResult<Chunk> {
+            -> ChunkFuture {
         let req = self.new_request(command, args);
         self.send_request(&req)
     }
 
-    fn request_no_args(&mut self, command: &str) -> RequestResult<Chunk> {
+    fn request_no_args(&mut self, command: &str) -> ChunkFuture {
         self.request(command, vec![])
     }
 
@@ -176,78 +173,79 @@ impl IpfsApi {
         Ok(infos)
     }
 
-    pub fn bitswap_stat(&mut self) -> RequestResult<Chunk> {
+    pub fn bitswap_stat(&mut self) -> ChunkFuture {
         self.request_no_args("bitswap/stat")
     }
 
     // TODO: is this working? might need to specify encoding
     pub fn block_get<S: AsRef<str>>(&mut self, cid: S)
-                                    -> RequestResult<String> {
+            -> Box<Future<Item = String, Error = hyper::Error>> {
         self.request_string_result("block/get", vec![cid.as_ref()])
     }
 
-    pub fn bootstrap_list(&mut self) -> RequestResult<Chunk> {
+    pub fn bootstrap_list(&mut self) -> ChunkFuture {
         self.request_no_args("bootstrap/list")
     }
 
-    pub fn cat<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<Chunk> {
+    pub fn cat<S: AsRef<str>>(&mut self, cid: S) -> ChunkFuture {
         self.request("cat", vec![cid.as_ref()])
     }
 
-    pub fn commands(&mut self) -> RequestResult<Chunk> {
+    pub fn commands(&mut self) -> ChunkFuture {
         self.request_no_args("commands")
     }
 
     pub fn config_get<S: AsRef<str>>(&mut self, key: S)
-                                     -> RequestResult<String> {
+            -> Box<Future<Item = String, Error = hyper::Error>> {
         self.request_string_result("config", vec![key.as_ref()])
     }
 
-    pub fn config_show(&mut self) -> RequestResult<String> {
+    pub fn config_show(&mut self)
+            -> Box<Future<Item = String, Error = hyper::Error>> {
         self.request_string_result("config/show", vec![])
     }
 
-    pub fn id(&mut self) -> RequestResult<Chunk> {
+    pub fn id(&mut self) -> ChunkFuture {
         self.request_no_args("id")
     }
 
-    pub fn log_ls(&mut self) -> RequestResult<Chunk> {
+    pub fn log_ls(&mut self) -> ChunkFuture {
         self.request_no_args("log/ls")
     }
 
     // TODO: test that this keeps receiving chunks correctly?
-    pub fn log_tail(&mut self) -> RequestResult<Chunk> {
+    pub fn log_tail(&mut self) -> ChunkFuture {
         self.request_no_args("log/tail")
     }
 
     pub fn object_data<S: AsRef<str>>(&mut self, multihash: S)
-                                      -> RequestResult<Chunk> {
+                                      -> ChunkFuture {
         self.request("object/data", vec![multihash.as_ref()])
     }
 
     pub fn object_get<S: AsRef<str>>(&mut self, multihash: S)
-                                     -> RequestResult<Chunk> {
+                                     -> ChunkFuture {
         self.request("object/get", vec![multihash.as_ref()])
     }
 
     pub fn object_links<S: AsRef<str>>(&mut self, multihash: S)
-                                       -> RequestResult<Chunk> {
+                                       -> ChunkFuture {
         self.request("object/links", vec![multihash.as_ref()])
     }
 
-    pub fn stats_bitswap(&mut self) -> RequestResult<Chunk> {
+    pub fn stats_bitswap(&mut self) -> ChunkFuture {
         self.request_no_args("stats/bitswap")
     }
 
-    pub fn swarm_addrs(&mut self) -> RequestResult<Chunk> {
+    pub fn swarm_addrs(&mut self) -> ChunkFuture {
         self.request_no_args("swarm/addrs")
     }
 
-    pub fn swarm_peers(&mut self) -> RequestResult<Chunk> {
+    pub fn swarm_peers(&mut self) -> ChunkFuture {
         self.request_no_args("swarm/peers")
     }
 
-    pub fn version(&mut self) -> RequestResult<Chunk> {
+    pub fn version(&mut self) -> ChunkFuture {
         self.request_no_args("version")
     }
 }
