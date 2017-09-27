@@ -11,6 +11,7 @@ mod unmarshal;
 mod util;
 
 use futures::{Future, Stream};
+use hyper::Chunk;
 use multipart_legacy_client::send_new_post_request;
 use tokio_core::reactor;
 use std::str;
@@ -117,7 +118,7 @@ impl IpfsApi {
     }
 
     fn send_request(&mut self, request: &Request<()>)
-                        -> RequestResult<hyper::Chunk> {
+                        -> RequestResult<Chunk> {
         let hyper_req: hyper::Request = request.new_hyper_request(hyper::Method::Post);
         //req.headers_mut().set(ContentType::json());
         //req.headers_mut().set(ContentLength(json.len() as u64));
@@ -144,12 +145,12 @@ impl IpfsApi {
 
 
     fn request(&mut self, command: &str, args: Vec<&str>)
-            -> RequestResult<hyper::Chunk> {
+            -> RequestResult<Chunk> {
         let req = self.new_request(command, args);
         self.send_request(&req)
     }
 
-    fn request_no_args(&mut self, command: &str) -> RequestResult<hyper::Chunk> {
+    fn request_no_args(&mut self, command: &str) -> RequestResult<Chunk> {
         self.request(command, vec![])
     }
 
@@ -176,7 +177,7 @@ impl IpfsApi {
         Ok(infos)
     }
 
-    pub fn bitswap_stat(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn bitswap_stat(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("bitswap/stat")
     }
 
@@ -185,15 +186,15 @@ impl IpfsApi {
         self.request_string_result("block/get", vec![cid.as_ref()])
     }
 
-    pub fn bootstrap_list(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn bootstrap_list(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("bootstrap/list")
     }
 
-    pub fn cat<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<hyper::Chunk> {
+    pub fn cat<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<Chunk> {
         self.request("cat", vec![cid.as_ref()])
     }
 
-    pub fn commands(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn commands(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("commands")
     }
 
@@ -205,32 +206,37 @@ impl IpfsApi {
         self.request_string_result("config/show", vec![])
     }
 
-    pub fn id(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn id(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("id")
     }
 
-    pub fn log_ls(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn log_ls(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("log/ls")
     }
 
     // TODO: test that this keeps receiving chunks correctly?
-    pub fn log_tail(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn log_tail(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("log/tail")
     }
 
-    pub fn stats_bitswap(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn object_data<S>(&mut self, multihash: S)
+            -> RequestResult<Chunk> where S: AsRef<str> {
+        self.request("object/data", vec![multihash.as_ref()])
+    }
+
+    pub fn stats_bitswap(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("stats/bitswap")
     }
 
-    pub fn swarm_addrs(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn swarm_addrs(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("swarm/addrs")
     }
 
-    pub fn swarm_peers(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn swarm_peers(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("swarm/peers")
     }
 
-    pub fn version(&mut self) -> RequestResult<hyper::Chunk> {
+    pub fn version(&mut self) -> RequestResult<Chunk> {
         self.request_no_args("version")
     }
 }
