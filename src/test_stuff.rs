@@ -1,17 +1,20 @@
 extern crate ipfs_api;
+extern crate tokio_core;
 
 use ipfs_api::{IpfsApi, unmarshal, AddInfo, CommandInfo, IdInfo, ObjectInfo,
                ObjectLinkInfo, VersionInfo};
 use std::io::{self, Write};
+use tokio_core::reactor;
 
 fn main() {
-    let mut ipfs = IpfsApi::default();
-    if let Err(e) = run_commands(&mut ipfs) {
+    let core = reactor::Core::new().unwrap();
+    let mut ipfs = IpfsApi::default(&core.handle());
+    if let Err(e) = run_commands(core, &mut ipfs) {
         panic!("Error making API request: {:?}", e)
     }
 }
 
-fn run_commands(ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
+fn run_commands(mut core: reactor::Core, ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
     /*
     let chunk = ipfs.commands()?;
     let command_info: CommandInfo = unmarshal(&chunk).expect("could not unmarshal");
@@ -53,12 +56,18 @@ fn run_commands(ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
     println!("version result: {:?}", version_info);
     */
 
-    let chunk = ipfs.object_get("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG")?;
+    let obj_get = ipfs.object_get("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let chunk = core.run(obj_get)?;
     let obj_info: ObjectInfo = unmarshal(&chunk).expect("could not unmarshal");
     println!("object get result:");
     for obj_link in obj_info.Links.iter() {
         println!(" Link {{ name: {}, hash: {}, size: {} }}", obj_link.Name,
                  obj_link.Hash, obj_link.Size);
     }
+
+    /*
+    let readme_hash = obj_info.Links[4].Hash;
+    */
+
     Ok(())
 }
