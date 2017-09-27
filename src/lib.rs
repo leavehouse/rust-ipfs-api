@@ -17,11 +17,10 @@ use tokio_core::reactor;
 use std::str;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
-pub use unmarshal::{AddInfo, CommandInfo, CommandNames, IdInfo, VersionInfo};
+pub use unmarshal::*;
 pub use unmarshal::unmarshal;
 
 // TODO: args could be an Iterator?
-// TODO: command could be some U where U: AsRef<str> to avoid allocation?
 pub struct Request<'a, D> {
     api_base: String,
     command: &'a str,
@@ -182,7 +181,8 @@ impl IpfsApi {
     }
 
     // TODO: is this working? might need to specify encoding
-    pub fn block_get<S: AsRef<str>>(&mut self, cid: S) -> RequestResult<String> {
+    pub fn block_get<S: AsRef<str>>(&mut self, cid: S)
+                                    -> RequestResult<String> {
         self.request_string_result("block/get", vec![cid.as_ref()])
     }
 
@@ -198,7 +198,8 @@ impl IpfsApi {
         self.request_no_args("commands")
     }
 
-    pub fn config_get<S: AsRef<str>>(&mut self, key: S) -> RequestResult<String> {
+    pub fn config_get<S: AsRef<str>>(&mut self, key: S)
+                                     -> RequestResult<String> {
         self.request_string_result("config", vec![key.as_ref()])
     }
 
@@ -219,9 +220,19 @@ impl IpfsApi {
         self.request_no_args("log/tail")
     }
 
-    pub fn object_data<S>(&mut self, multihash: S)
-            -> RequestResult<Chunk> where S: AsRef<str> {
+    pub fn object_data<S: AsRef<str>>(&mut self, multihash: S)
+                                      -> RequestResult<Chunk> {
         self.request("object/data", vec![multihash.as_ref()])
+    }
+
+    pub fn object_get<S: AsRef<str>>(&mut self, multihash: S)
+                                     -> RequestResult<Chunk> {
+        self.request("object/get", vec![multihash.as_ref()])
+    }
+
+    pub fn object_links<S: AsRef<str>>(&mut self, multihash: S)
+                                       -> RequestResult<Chunk> {
+        self.request("object/links", vec![multihash.as_ref()])
     }
 
     pub fn stats_bitswap(&mut self) -> RequestResult<Chunk> {

@@ -1,6 +1,7 @@
 extern crate ipfs_api;
 
-use ipfs_api::{IpfsApi, unmarshal, AddInfo, CommandInfo, IdInfo, VersionInfo};
+use ipfs_api::{IpfsApi, unmarshal, AddInfo, CommandInfo, IdInfo, ObjectInfo,
+               ObjectLinkInfo, VersionInfo};
 use std::io::{self, Write};
 
 fn main() {
@@ -11,6 +12,7 @@ fn main() {
 }
 
 fn run_commands(ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
+    /*
     let chunk = ipfs.commands()?;
     let command_info: CommandInfo = unmarshal(&chunk).expect("could not unmarshal");
     println!("commands result: {:?}", command_info);
@@ -49,5 +51,14 @@ fn run_commands(ipfs: &mut IpfsApi) -> Result<(), ipfs_api::RequestError> {
     let chunk = ipfs.version()?;
     let version_info: VersionInfo = unmarshal(&chunk).expect("could not unmarshal");
     println!("version result: {:?}", version_info);
+    */
+
+    let chunk = ipfs.object_get("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG")?;
+    let obj_info: ObjectInfo = unmarshal(&chunk).expect("could not unmarshal");
+    println!("object get result:");
+    for obj_link in obj_info.Links.iter() {
+        println!(" Link {{ name: {}, hash: {}, size: {} }}", obj_link.Name,
+                 obj_link.Hash, obj_link.Size);
+    }
     Ok(())
 }

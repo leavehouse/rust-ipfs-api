@@ -25,6 +25,25 @@ pub struct CommandNames {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ObjectInfo {
+    pub Links: Vec<ObjectLinkInfo>,
+    pub Data: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ObjectLinkInfo {
+    pub Name: String,
+    pub Hash: String,
+    pub Size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ObjectLinksInfo {
+    pub Hash: String,
+    pub Links: Vec<ObjectLinkInfo>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct IdInfo {
     ID: String,
     PublicKey: String,
