@@ -17,7 +17,6 @@ use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 use tokio_core::reactor;
 pub use unmarshal::*;
-pub use unmarshal::unmarshal;
 
 // TODO: args could be an Iterator?
 pub struct Request<'a, D> {
